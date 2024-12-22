@@ -10,7 +10,7 @@
 If you use Ubuntu 24.04 for WSL, you need to run the below command to install the required tools. 
 
 ```shell
-apt install qemu-system build-essential
+sudo apt install qemu-system-x86 make clang
 ```
 
 # How to Run
