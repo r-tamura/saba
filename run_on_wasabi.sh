@@ -27,7 +27,7 @@ else
   echo $OS_PATH" doesn't exist"
   echo "cloning wasabi project..."
   cd $TARGET_PATH
-  git clone --branch for_saba git@github.com:hikalium/wasabi.git
+  git clone --branch for_saba https://github.com/hikalium/wasabi.git
 fi
 
 # go back to the application top directory
