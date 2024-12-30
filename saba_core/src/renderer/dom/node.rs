@@ -40,8 +40,8 @@ pub struct Node {
     parent: Weak<RefCell<Node>>,
     first_child: Option<Rc<RefCell<Node>>>,
     last_child: Weak<RefCell<Node>>,
-    previous_sibiling: Weak<RefCell<Node>>,
-    next_sibiling: Option<Rc<RefCell<Node>>>,
+    previous_sibling: Weak<RefCell<Node>>,
+    next_sibling: Option<Rc<RefCell<Node>>>,
 }
 
 impl Node {
@@ -52,8 +52,8 @@ impl Node {
             parent: Weak::new(),
             first_child: None,
             last_child: Weak::new(),
-            previous_sibiling: Weak::new(),
-            next_sibiling: None,
+            previous_sibling: Weak::new(),
+            next_sibling: None,
         }
     }
 
@@ -85,20 +85,20 @@ impl Node {
         self.last_child.clone()
     }
 
-    pub fn set_previous_sibiling(&mut self, previous_sibiling: Weak<RefCell<Node>>) {
-        self.previous_sibiling = previous_sibiling;
+    pub fn set_previous_sibling(&mut self, previous_sibiling: Weak<RefCell<Node>>) {
+        self.previous_sibling = previous_sibiling;
     }
 
-    pub fn previous_sibiling(&self) -> Weak<RefCell<Node>> {
-        self.previous_sibiling.clone()
+    pub fn previous_sibling(&self) -> Weak<RefCell<Node>> {
+        self.previous_sibling.clone()
     }
 
-    pub fn set_next_sibiling(&mut self, next_sibiling: Option<Rc<RefCell<Node>>>) {
-        self.next_sibiling = next_sibiling;
+    pub fn set_next_sibling(&mut self, next_sibiling: Option<Rc<RefCell<Node>>>) {
+        self.next_sibling = next_sibiling;
     }
 
-    pub fn next_sibiling(&self) -> Option<Rc<RefCell<Node>>> {
-        self.next_sibiling.as_ref().cloned()
+    pub fn next_sibling(&self) -> Option<Rc<RefCell<Node>>> {
+        self.next_sibling.as_ref().cloned()
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -132,7 +132,20 @@ pub enum NodeKind {
 
 impl PartialEq for NodeKind {
     fn eq(&self, other: &Self) -> bool {
-        todo!();
+        match &self {
+            NodeKind::Document => matches!(other, NodeKind::Document),
+            NodeKind::Element(e1) => match &other {
+                NodeKind::Element(e2) => e1.kind == e2.kind,
+                _ => false,
+            },
+            NodeKind::Text(_) => matches!(other, NodeKind::Text(_)),
+        }
+    }
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
     }
 }
 
@@ -189,6 +202,10 @@ impl FromStr for ElementKind {
             "style" => Ok(ElementKind::Style),
             "script" => Ok(ElementKind::Script),
             "body" => Ok(ElementKind::Body),
+            "p" => Ok(ElementKind::P),
+            "h1" => Ok(ElementKind::H1),
+            "h2" => Ok(ElementKind::H2),
+            "a" => Ok(ElementKind::A),
             _ => Err(format!("unimplemented element name {:?}", s)),
         }
     }

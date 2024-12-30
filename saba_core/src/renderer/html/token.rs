@@ -1,6 +1,5 @@
 use crate::renderer::html::attribute::Attribute;
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -486,6 +485,7 @@ impl Iterator for HtmlTokenizer {
 mod tests {
     use super::*;
     use crate::alloc::string::ToString;
+    use alloc::vec;
 
     #[test]
     fn test_empty() {
