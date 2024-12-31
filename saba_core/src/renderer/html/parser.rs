@@ -130,6 +130,9 @@ impl HtmlParser {
         } else {
             current.borrow_mut().set_first_child(Some(node.clone()));
         }
+        current.borrow_mut().set_last_child(Rc::downgrade(&node));
+        node.borrow_mut().set_parent(Rc::downgrade(&current));
+        self.stack_of_open_elements.push(node);
     }
 
     fn create_element(&self, tag: &str, attributes: Vec<Attribute>) -> Node {
