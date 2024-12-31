@@ -98,7 +98,7 @@ impl Node {
     }
 
     pub fn next_sibling(&self) -> Option<Rc<RefCell<Node>>> {
-        self.next_sibling.as_ref().cloned()
+        self.next_sibling.clone()
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -138,7 +138,10 @@ impl PartialEq for NodeKind {
                 NodeKind::Element(e2) => e1.kind == e2.kind,
                 _ => false,
             },
-            NodeKind::Text(_) => matches!(other, NodeKind::Text(_)),
+            NodeKind::Text(t1) => match &other {
+                NodeKind::Text(t2) => t1 == t2,
+                _ => false,
+            },
         }
     }
 }
