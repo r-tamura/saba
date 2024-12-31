@@ -9,6 +9,9 @@ use crate::renderer::{
 
 use super::{attribute::Attribute, token::HtmlTokenizer};
 
+const SPACE: char = ' ';
+const LINE_FEED: char = '\n';
+
 /// https://html.spec.whatwg.org/multipage/parsing.html#the-insertion-mode
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InsertionMode {
@@ -57,10 +60,6 @@ impl HtmlParser {
         false
     }
 
-    fn has_child(current: &Rc<RefCell<Node>>) -> bool {
-        current.borrow().first_child().is_some()
-    }
-
     fn pop_until(&mut self, element_kind: ElementKind) {
         assert!(
             self.contains_in_stack(element_kind),
@@ -94,6 +93,54 @@ impl HtmlParser {
         false
     }
 
+    /// 親ノードの持つ子供の最後尾に新しいノードを追加します
+    fn insert_node(&mut self, parent: Rc<RefCell<Node>>, new_node: Node) {
+        // if HtmlParser::has_child(&current) {
+        //     // last_childと等価?
+        //     let mut last_sibling = current.borrow().first_child();
+        //     loop {
+        //         last_sibling = match last_sibling {
+        //             Some(ref node) => {
+        //                 if node.borrow().next_sibling().is_some() {
+        //                     node.borrow().next_sibling()
+        //                 } else {
+        //                     break;
+        //                 }
+        //             }
+        //             None => unimplemented!("last_sibiling shoud be Some"),
+        //         }
+        //     }
+        //     let last_sibling = current.borrow_mut().last_child();
+        //     last_sibling
+        //         .upgrade()
+        //         .unwrap()
+        //         .borrow_mut()
+        //         .set_next_sibling(Some(new_node.clone()));
+        //     new_node.borrow_mut().set_previous_sibling(Rc::downgrade(
+        //         &last_sibling.upgrade().expect("last_sibling should be Some"),
+        //     ))
+        // } else {
+        //     current.borrow_mut().set_first_child(Some(new_node.clone()));
+        // }
+
+        let new_node = Rc::new(RefCell::new(new_node));
+        let mut current_node = parent.borrow_mut();
+        match current_node.last_child().upgrade() {
+            Some(last_child) => {
+                last_child
+                    .borrow_mut()
+                    .set_next_sibling(Some(new_node.clone()));
+            }
+            None => {
+                current_node.set_first_child(Some(new_node.clone()));
+            }
+        }
+        current_node.set_last_child(Rc::downgrade(&new_node));
+        new_node.borrow_mut().set_parent(Rc::downgrade(&parent));
+
+        self.stack_of_open_elements.push(new_node);
+    }
+
     fn create_char(&self, c: char) -> Node {
         let mut s = String::new();
         s.push(c);
@@ -115,24 +162,12 @@ impl HtmlParser {
             return;
         }
 
-        if c == ' ' || c == '\n' {
+        if c == SPACE || c == LINE_FEED {
             return;
         }
 
-        let node = Rc::new(RefCell::new(self.create_char(c)));
-        if HtmlParser::has_child(&current) {
-            current
-                .borrow()
-                .first_child()
-                .unwrap()
-                .borrow_mut()
-                .set_next_sibling(Some(node.clone()));
-        } else {
-            current.borrow_mut().set_first_child(Some(node.clone()));
-        }
-        current.borrow_mut().set_last_child(Rc::downgrade(&node));
-        node.borrow_mut().set_parent(Rc::downgrade(&current));
-        self.stack_of_open_elements.push(node);
+        // let node = Rc::new(RefCell::new(self.create_char(c)));
+        self.insert_node(current, self.create_char(c));
     }
 
     fn create_element(&self, tag: &str, attributes: Vec<Attribute>) -> Node {
@@ -140,47 +175,14 @@ impl HtmlParser {
     }
 
     fn insert_element(&mut self, tag: &str, attributes: Vec<Attribute>) {
-        let window = self.window.borrow();
         let current = match self.stack_of_open_elements.last() {
             Some(node) => node.clone(),
             // Documentが最初にスタックに積まれているという仕様
-            None => window.document(),
+            None => self.window.borrow().document(),
         };
 
-        let new_node = Rc::new(RefCell::new(self.create_element(tag, attributes)));
-
-        if current.borrow().first_child().is_some() {
-            let mut last_sibling = current.borrow().first_child();
-            loop {
-                last_sibling = match last_sibling {
-                    Some(ref node) => {
-                        if node.borrow().next_sibling().is_some() {
-                            node.borrow().next_sibling()
-                        } else {
-                            break;
-                        }
-                    }
-                    None => unimplemented!("last_sibiling shoud be Some"),
-                }
-            }
-            last_sibling
-                .as_ref()
-                .unwrap() // Someが確定している
-                .borrow_mut()
-                .set_next_sibling(Some(new_node.clone()));
-            new_node.borrow_mut().set_previous_sibling(Rc::downgrade(
-                &last_sibling.expect("last_sibling should be Some"),
-            ))
-        } else {
-            current.borrow_mut().set_first_child(Some(new_node.clone()));
-        }
-
-        current
-            .borrow_mut()
-            .set_last_child(Rc::downgrade(&new_node));
-        new_node.borrow_mut().set_parent(Rc::downgrade(&current));
-
-        self.stack_of_open_elements.push(new_node);
+        // let new_node = Rc::new(RefCell::new(self.create_element(tag, attributes)));
+        self.insert_node(current, self.create_element(tag, attributes));
     }
 
     pub fn construct_tree(&mut self) -> Rc<RefCell<Window>> {
@@ -201,7 +203,7 @@ impl HtmlParser {
                 InsertionMode::BeforeHtml => {
                     match token {
                         Some(HtmlToken::Char(c)) => {
-                            if c == ' ' || c == '\n' {
+                            if c == SPACE || c == LINE_FEED {
                                 token = self.t.next();
                                 continue;
                             }
@@ -228,7 +230,7 @@ impl HtmlParser {
                 }
                 InsertionMode::BeforeHead => match token {
                     Some(HtmlToken::Char(c)) => {
-                        if c == ' ' || c == '\n' {
+                        if c == SPACE || c == LINE_FEED {
                             token = self.t.next();
                             continue;
                         }
@@ -254,7 +256,7 @@ impl HtmlParser {
                 InsertionMode::InHead => {
                     match token {
                         Some(HtmlToken::Char(c)) => {
-                            if c == ' ' || c == '\n' {
+                            if c == SPACE || c == LINE_FEED {
                                 self.t.next();
                                 continue;
                             }
@@ -304,7 +306,7 @@ impl HtmlParser {
                 InsertionMode::AfterHead => {
                     match token {
                         Some(HtmlToken::Char(c)) => {
-                            if c == ' ' || c == '\n' {
+                            if c == SPACE || c == LINE_FEED {
                                 self.insert_char(c);
                                 token = self.t.next();
                                 continue;
