@@ -46,6 +46,8 @@ fn split_text(line: String, char_width: i64) -> Vec<String> {
     result
 }
 
+/// レオアウトオブジェクトを生成します
+/// ただし、画面に描画されないノードの場合、レイアウトオブジェクトをしません（Noneを返します）
 pub fn create_layout_object(
     node: &Option<Rc<RefCell<Node>>>,
     parent: &Option<Rc<RefCell<LayoutObject>>>,

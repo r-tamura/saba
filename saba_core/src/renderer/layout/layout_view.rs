@@ -18,6 +18,35 @@ use super::layout_object::{
     create_layout_object, LayoutObject, LayoutObjectKind, LayoutPoint, LayoutSize,
 };
 
+/// 引数で指定されたノードを先頭としたすべての兄弟ノードのレイアウトオブジェクトを生成します
+fn build_layout_siblings(
+    first_node: Option<Rc<RefCell<Node>>>,
+    parent: &mut Option<Rc<RefCell<LayoutObject>>>,
+    cssom: &StyleSheet,
+) {
+    let mut first_node_layout = build_layout_tree(&first_node, &parent, cssom);
+    if first_node.is_some() && first_node_layout.is_none() {
+        let mut candidate_node = first_node
+            .expect("first child shoud exist")
+            .borrow()
+            .next_sibling();
+
+        loop {
+            first_node_layout = build_layout_tree(&candidate_node, &parent, cssom);
+
+            if first_node_layout.is_none() && candidate_node.is_some() {
+                candidate_node = candidate_node
+                    .expect("next sibling should exists")
+                    .borrow()
+                    .next_sibling();
+                continue;
+            }
+
+            break;
+        }
+    }
+}
+
 /// レイアウトツリーを構築します
 /// レイアウトツリーの要素はDOM要素の中から画面に表示される(display: noneでない)要素のみで構成されたものだけになります
 fn build_layout_tree(
@@ -37,59 +66,24 @@ fn build_layout_tree(
         }
     }
 
-    if let Some(node) = target_node {
-        let original_first_child = node.borrow().first_child();
-        let original_next_sibling = node.borrow().next_sibling();
-        let mut first_child_layout =
-            build_layout_tree(&original_first_child, &current_layout, cssom);
-        let mut next_sibling_layout = build_layout_tree(&original_next_sibling, &None, cssom);
+    let node = match target_node {
+        Some(node) => node,
+        None => return current_layout,
+    };
 
-        // 最初に画面に表示される子ノードをレイアウトツリー上の子ノードとする
-        // （画面表示されない子ノードはスキップ）
-        if first_child_layout.is_none() && original_first_child.is_some() {
-            let mut first_child_candidate = original_first_child
-                .expect("first child shoud exist")
-                .borrow()
-                .next_sibling();
+    // 最初に画面に表示される子ノードをレイアウトツリー上の子ノードとする
+    // （画面表示されない子ノードはスキップ）
+    let original_first_child = node.borrow().first_child();
+    let mut first_child_layout = build_layout_tree(&original_first_child, &current_layout, cssom);
+    build_layout_siblings(original_first_child, &mut first_child_layout, cssom);
 
-            loop {
-                first_child_layout =
-                    build_layout_tree(&first_child_candidate, &current_layout, cssom);
+    // 最初に画面に表示される兄弟ノードをレイアウトツリー上の次の兄弟ノードとする
+    // （画面表示されない兄弟ノードはスキップ）
+    let original_next_sibling = node.borrow().next_sibling();
+    let mut next_sibling_layout = build_layout_tree(&original_next_sibling, &None, cssom);
+    build_layout_siblings(original_next_sibling, &mut next_sibling_layout, cssom);
 
-                if first_child_layout.is_none() && first_child_candidate.is_some() {
-                    first_child_candidate = first_child_candidate
-                        .expect("next sibling should exists")
-                        .borrow()
-                        .next_sibling();
-                    continue;
-                }
-
-                break;
-            }
-        }
-
-        // 最初に画面に表示される兄弟ノードをレイアウトツリー上の次の兄弟ノードとする
-        // （画面表示されない兄弟ノードはスキップ）
-        if next_sibling_layout.is_none() && node.borrow().next_sibling().is_some() {
-            let mut next_sibling_candidate = original_next_sibling
-                .expect("first child should exist")
-                .borrow()
-                .next_sibling();
-
-            loop {
-                next_sibling_layout = build_layout_tree(&next_sibling_candidate, &None, cssom);
-                if next_sibling_layout.is_none() && next_sibling_candidate.is_some() {
-                    next_sibling_candidate = next_sibling_candidate
-                        .expect("next sibling should exists")
-                        .borrow()
-                        .next_sibling();
-                    continue;
-                }
-
-                break;
-            }
-        }
-
+    {
         let current_layout = current_layout
             .as_ref()
             .expect("layout object should exist here");
