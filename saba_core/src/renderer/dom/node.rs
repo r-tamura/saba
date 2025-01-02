@@ -1,5 +1,9 @@
 use alloc::format;
-use core::{cell::RefCell, str::FromStr};
+use core::{
+    cell::RefCell,
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 use alloc::{
     rc::{Rc, Weak},
@@ -7,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::renderer::html::attribute::Attribute;
+use crate::renderer::{html::attribute::Attribute, layout::layout_object::LayoutSize};
 
 #[derive(Debug, Clone)]
 pub struct Window {
@@ -171,6 +175,26 @@ impl Element {
     pub fn kind(&self) -> ElementKind {
         self.kind
     }
+
+    pub fn attributes(&self) -> Vec<Attribute> {
+        self.attributes.clone()
+    }
+
+    pub fn get_attr(&self, name: &str) -> Option<Attribute> {
+        for attr in &self.attributes {
+            if attr.name() == name {
+                return Some(attr.clone());
+            }
+        }
+        None
+    }
+
+    pub fn is_block(&self) -> bool {
+        match self.kind {
+            ElementKind::Body | ElementKind::H1 | ElementKind::H2 | ElementKind::P => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -211,5 +235,22 @@ impl FromStr for ElementKind {
             "a" => Ok(ElementKind::A),
             _ => Err(format!("unimplemented element name {:?}", s)),
         }
+    }
+}
+
+impl Display for ElementKind {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        let s = match self {
+            ElementKind::Html => "html",
+            ElementKind::Head => "head",
+            ElementKind::Style => "style",
+            ElementKind::Script => "script",
+            ElementKind::Body => "body",
+            ElementKind::P => "p",
+            ElementKind::H1 => "h1",
+            ElementKind::H2 => "h2",
+            ElementKind::A => "a",
+        };
+        write!(f, "{}", s)
     }
 }

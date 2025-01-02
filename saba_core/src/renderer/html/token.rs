@@ -594,4 +594,27 @@ mod tests {
             assert_eq!(Some(e), tokenizer.next());
         }
     }
+
+    #[test]
+    fn test_when_newline_exists_betwenn_open_tag_and_close_tag_html_should_be_tokenzed() {
+        let html = r#"<head>
+</head>"#
+            .to_string();
+
+        let mut t = HtmlTokenizer::new(html);
+        let expected = [
+            HtmlToken::StartTag {
+                tag: "head".to_string(),
+                self_closing: false,
+                attributes: Vec::new(),
+            },
+            HtmlToken::Char('\n'),
+            HtmlToken::EndTag {
+                tag: "head".to_string(),
+            },
+        ];
+        for e in expected {
+            assert_eq!(Some(e), t.next());
+        }
+    }
 }

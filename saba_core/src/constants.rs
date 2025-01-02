@@ -1,0 +1,16 @@
+pub const WINDOW_WIDTH: i64 = 600;
+pub const WINDOW_HEIGHT: i64 = 400;
+pub const WINDOW_PADDING: i64 = 5;
+
+// noliライブラリに定義されている定数
+pub const TITLE_BAR_HEIGHT: i64 = 24;
+
+pub const TOOLBAR_HEIGHT: i64 = 26;
+
+pub const CONTENT_AREA_WIDTH: i64 = WINDOW_WIDTH - WINDOW_PADDING * 2;
+pub const CONTENT_AREA_HEIGHT: i64 =
+    WINDOW_HEIGHT - TITLE_BAR_HEIGHT - TOOLBAR_HEIGHT - WINDOW_PADDING * 2;
+
+pub const CHAR_WIDTH: i64 = 8;
+pub const CHAR_HEIGHT: i64 = 16;
+pub const CHAR_HEIGHT_WITH_PADDING: i64 = CHAR_HEIGHT + 4;
