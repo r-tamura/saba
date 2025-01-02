@@ -3,11 +3,14 @@ use core::cell::RefCell;
 use alloc::{
     rc::{Rc, Weak},
     string::{String, ToString},
+    vec,
     vec::Vec,
 };
 
 use crate::{
-    constants::{CHAR_HEIGHT_WITH_PADDING, CHAR_WIDTH, CONTENT_AREA_WIDTH},
+    constants::{
+        CHAR_HEIGHT_WITH_PADDING, CHAR_WIDTH, CONTENT_AREA_WIDTH, WINDOW_PADDING, WINDOW_WIDTH,
+    },
     display_item::DisplayItem,
     renderer::{
         css::cssom::{ComponentValue, Declaration, Selector, StyleSheet},
@@ -19,12 +22,28 @@ use super::computed_style::{Color, ComputedStyle, DisplayType, FontSize};
 
 /// https://drafts.csswg.org/css-text/#word-break-property
 fn find_index_for_line_break(line: String, max_index: usize) -> usize {
-    todo!();
+    for i in (0..max_index).rev() {
+        if line.chars().collect::<Vec<char>>()[i] == ' ' {
+            return i;
+        }
+    }
+    max_index
 }
 
 /// https://drafts.csswg.org/css-text/#word-break-property
 fn split_text(line: String, char_width: i64) -> Vec<String> {
-    todo!();
+    let mut result: Vec<String> = vec![];
+    if line.len() as i64 * char_width > (WINDOW_WIDTH + WINDOW_PADDING) {
+        let s = line.split_at(find_index_for_line_break(
+            line.clone(),
+            ((WINDOW_WIDTH + WINDOW_PADDING) / char_width) as usize,
+        ));
+        result.push(s.0.to_string());
+        result.extend(split_text(s.1.trim().to_string(), char_width))
+    } else {
+        result.push(line);
+    }
+    result
 }
 
 pub fn create_layout_object(
@@ -65,7 +84,6 @@ pub enum LayoutObjectKind {
     Block,
     Inline,
     Text,
-    Unknown,
 }
 #[derive(Debug, Clone)]
 pub struct LayoutObject {
@@ -95,7 +113,61 @@ impl LayoutObject {
     }
 
     pub fn paint(&mut self) -> Vec<DisplayItem> {
-        todo!();
+        if self.style.display() == DisplayType::None {
+            return vec![];
+        }
+
+        match self.kind {
+            LayoutObjectKind::Block => {
+                if let NodeKind::Element(_e) = self.node_kind() {
+                    return vec![DisplayItem::Rect {
+                        style: self.style(),
+                        layout_point: self.point(),
+                        layout_size: self.size(),
+                    }];
+                }
+            }
+            LayoutObjectKind::Inline => {
+                unimplemented!("'inline' element is not supported yet")
+            }
+            LayoutObjectKind::Text => {
+                let text = match self.node_kind() {
+                    NodeKind::Text(text) => text,
+                    _ => return vec![],
+                };
+
+                let ratio = match self.style.font_size() {
+                    FontSize::Medium => 1,
+                    FontSize::XLarge => 2,
+                    FontSize::XXLarge => 3,
+                };
+                let plain_text = text
+                    .replace("\n", " ")
+                    .split(' ')
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let lines = split_text(plain_text, CHAR_WIDTH * ratio);
+                let mut display_items = vec![];
+                let mut i = 0;
+                for line in lines {
+                    let item = DisplayItem::Text {
+                        text: line,
+                        style: self.style(),
+                        layout_point: LayoutPoint::new(
+                            self.point().x(),
+                            self.point().y() + CHAR_HEIGHT_WITH_PADDING * i,
+                        ),
+                    };
+                    display_items.push(item);
+                    i += 1;
+                }
+
+                return display_items;
+            }
+        }
+
+        vec![]
     }
 
     pub fn compute_size(&mut self, parent_size: LayoutSize) {
@@ -166,7 +238,6 @@ impl LayoutObject {
                     size.set_height(CHAR_HEIGHT_WITH_PADDING * ratio);
                 }
             }
-            LayoutObjectKind::Unknown => {}
         }
 
         self.size = size;

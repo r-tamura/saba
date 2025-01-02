@@ -1,4 +1,4 @@
-use core::{cell::RefCell, fmt::Display};
+use core::cell::RefCell;
 
 use alloc::{
     format,

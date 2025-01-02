@@ -193,11 +193,20 @@ impl LayoutView {
     }
 
     fn paint_node(node: &Option<Rc<RefCell<LayoutObject>>>, display_items: &mut Vec<DisplayItem>) {
-        todo!();
+        let node = match node.as_ref() {
+            Some(node) => node,
+            None => return,
+        };
+
+        display_items.extend(node.borrow_mut().paint());
+        Self::paint_node(&node.borrow().first_child(), display_items);
+        Self::paint_node(&node.borrow().next_sibling(), display_items);
     }
 
     pub fn paint(&self) -> Vec<DisplayItem> {
-        todo!();
+        let mut display_items = Vec::new();
+        Self::paint_node(&self.root, &mut display_items);
+        display_items
     }
 
     pub fn root(&self) -> Option<Rc<RefCell<LayoutObject>>> {
