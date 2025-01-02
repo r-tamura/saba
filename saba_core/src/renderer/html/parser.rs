@@ -257,7 +257,7 @@ impl HtmlParser {
                     match token {
                         Some(HtmlToken::Char(c)) => {
                             if c == SPACE || c == LINE_FEED {
-                                self.t.next();
+                                token = self.t.next();
                                 continue;
                             }
                         }
@@ -653,5 +653,31 @@ mod tests {
             Rc::new(RefCell::new(Node::new(NodeKind::Text("text".to_string())))),
             text
         );
+    }
+
+    // <head>タグの開始タグ終了タグの間に改行が存歳するとパースが停止しない不具合
+    #[test]
+    fn test_html_should_be_parsed_when_newline_exists_betwenn_open_tag_and_close_tag() {
+        let html = r#"<html><head>
+</head><body></body></html>"#
+            .to_string();
+
+        let t = HtmlTokenizer::new(html);
+
+        // Assert
+        let window = HtmlParser::new(t).construct_tree();
+        let document = window.borrow().document();
+        let body = document
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head");
+
+        assert!(body.borrow().first_child().is_none());
     }
 }
