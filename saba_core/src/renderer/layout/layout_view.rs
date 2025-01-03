@@ -115,6 +115,51 @@ impl LayoutView {
         tree
     }
 
+    /// 指定された位置に存在するノードを返します
+    /// もっとも深い子ノードが返されます
+    pub fn find_node_by_position(&self, position: (i64, i64)) -> Option<Rc<RefCell<LayoutObject>>> {
+        Self::find_node_by_position_internal(&self.root(), position)
+    }
+
+    fn node_contains_point(node: &LayoutObject, (x, y): (i64, i64)) -> bool {
+        fn point_in_area((x, y): (i64, i64), (ax, ay, aw, ah): (i64, i64, i64, i64)) -> bool {
+            ax <= x && x < ax + aw && ay <= y && y < ay + ah
+        }
+
+        let node_point = node.point();
+        let node_size = node.size();
+        point_in_area(
+            (x, y),
+            (
+                node_point.x(),
+                node_point.y(),
+                node_size.width(),
+                node_size.height(),
+            ),
+        )
+    }
+
+    fn find_node_by_position_internal(
+        node: &Option<Rc<RefCell<LayoutObject>>>,
+        (x, y): (i64, i64),
+    ) -> Option<Rc<RefCell<LayoutObject>>> {
+        let node = node.as_ref()?;
+        let result = Self::find_node_by_position_internal(&node.borrow().first_child(), (x, y));
+        if result.is_some() {
+            return result;
+        }
+        let result = Self::find_node_by_position_internal(&node.borrow().next_sibling(), (x, y));
+        if result.is_some() {
+            return result;
+        }
+
+        if Self::node_contains_point(&node.borrow(), (x, y)) {
+            return Some(node.clone());
+        }
+
+        None
+    }
+
     /// レイアウトツリーの各ノードのサイズを計算します
     fn calculat_node_size(node: &Option<Rc<RefCell<LayoutObject>>>, parent_size: LayoutSize) {
         let node = match node.as_ref() {

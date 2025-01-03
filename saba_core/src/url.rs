@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Url {
+pub struct Url {
     url: String,
     host: String,
     port: String,

@@ -129,9 +129,7 @@ impl LayoutObject {
                     }];
                 }
             }
-            LayoutObjectKind::Inline => {
-                unimplemented!("'inline' element is not supported yet")
-            }
+            LayoutObjectKind::Inline => {}
             LayoutObjectKind::Text => {
                 let text = match self.node_kind() {
                     NodeKind::Text(text) => text,

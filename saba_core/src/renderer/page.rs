@@ -1,8 +1,9 @@
 use core::cell::RefCell;
 
 use alloc::{
+    format,
     rc::{Rc, Weak},
-    string::{String, ToString},
+    string::String,
     vec,
     vec::Vec,
 };
@@ -16,9 +17,12 @@ use super::{
         cssom::{CssParser, StyleSheet},
         token::CssTokenizer,
     },
-    dom::{api::get_style_content, node::Window},
+    dom::{
+        api::get_style_content,
+        node::{ElementKind, NodeKind, Window},
+    },
     html::{parser::HtmlParser, token::HtmlTokenizer},
-    layout::layout_view::LayoutView,
+    layout::{layout_object::LayoutObjectKind, layout_view::LayoutView},
 };
 
 #[derive(Debug, Clone)]
@@ -82,6 +86,23 @@ impl Page {
         if let Some(layout_view) = &self.layout_view {
             self.display_items = layout_view.paint();
         }
+    }
+
+    /// 指定された位置に<a>タグが存在するとき、その<a>タグのリンクを返します
+    pub fn get_link_at(&self, position: (i64, i64)) -> Option<String> {
+        let view = self.layout_view.as_ref()?;
+        let node = view.find_node_by_position(position)?;
+        // aタグの子ノードが返されるのでparentでaタグを取得
+        let parent = node.borrow().parent().upgrade()?;
+        let link = if let NodeKind::Element(element) = parent.borrow().node_kind() {
+            match element.kind() {
+                ElementKind::A => element.get_attr("href").map(|attr| attr.value()),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        link
     }
 
     pub fn display_items(&self) -> Vec<DisplayItem> {
