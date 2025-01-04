@@ -24,12 +24,12 @@ pub enum Node {
         property: Option<Rc<Node>>,
     },
     NumericLiteral(u64),
-    VariableDeclaration {
+    VariableDeclarationList {
         declarations: Vec<Option<Rc<Node>>>,
     },
-    VariableDeclarator {
+    VariableDeclaration {
         id: Option<Rc<Node>>,
-        init: Option<Rc<Node>>,
+        initializer: Option<Rc<Node>>,
     },
     Identifier(String),
     StringLiteral(String),
@@ -66,6 +66,17 @@ impl Node {
             right,
         }))
     }
+    pub fn new_assignment_expression(
+        operator: char,
+        left: Option<Rc<Node>>,
+        right: Option<Rc<Node>>,
+    ) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::AssignmentExpression {
+            operator,
+            left,
+            right,
+        }))
+    }
 
     pub fn new_member_expression(
         object: Option<Rc<Self>>,
@@ -78,15 +89,15 @@ impl Node {
         Some(Rc::new(Node::NumericLiteral(value)))
     }
 
-    pub fn new_variable_declarator(
+    pub fn new_variable_declaration(
         id: Option<Rc<Self>>,
-        init: Option<Rc<Self>>,
+        initializer: Option<Rc<Self>>,
     ) -> Option<Rc<Self>> {
-        Some(Rc::new(Node::VariableDeclarator { id, init }))
+        Some(Rc::new(Node::VariableDeclaration { id, initializer }))
     }
 
-    pub fn new_variable_declaration(declarations: Vec<Option<Rc<Self>>>) -> Option<Rc<Self>> {
-        Some(Rc::new(Node::VariableDeclaration { declarations }))
+    pub fn new_variable_declaration_list(declarations: Vec<Option<Rc<Self>>>) -> Option<Rc<Self>> {
+        Some(Rc::new(Node::VariableDeclarationList { declarations }))
     }
 
     pub fn new_identifier(name: String) -> Option<Rc<Self>> {
@@ -132,6 +143,7 @@ impl JsParser {
 
     fn primary_expression(&mut self) -> Option<Rc<Node>> {
         match self.t.next()? {
+            Token::Identifier(name) => Node::new_identifier(name),
             Token::Number(n) => Node::new_numeric_literal(n),
             Token::StringLiteral(s) => Node::new_string_literal(s),
             _ => None,
@@ -169,23 +181,70 @@ impl JsParser {
     }
 
     fn assignment_expression(&mut self) -> Option<Rc<Node>> {
-        self.additive_expression()
+        // AssignExpression ::= AdditiveEpxression ( "=" AdditiveExpression )*
+        let expr = self.additive_expression();
+        let token = match self.t.peek() {
+            Some(token) => token,
+            None => return expr,
+        };
+
+        match token {
+            Token::Punctuator('=') => {
+                // Consume '='
+                assert!(self.t.next().is_some());
+                Node::new_assignment_expression('=', expr, self.assignment_expression())
+            }
+            _ => expr,
+        }
     }
 
     fn initialiser(&mut self) -> Option<Rc<Node>> {
-        todo!();
+        // Initializer ::= "=" AssignmentExpression
+        match self.t.next()? {
+            Token::Punctuator(c) => match c {
+                '=' => self.assignment_expression(),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     fn identifier(&mut self) -> Option<Rc<Node>> {
-        todo!();
+        match self.t.next()? {
+            Token::Identifier(name) => Node::new_identifier(name),
+            _ => None,
+        }
     }
 
     fn variable_declaration(&mut self) -> Option<Rc<Node>> {
-        todo!();
+        // 1つの変数宣言のみサポート
+        // ```js
+        // var x = 42, y = "a";
+        // ```
+        // のような複数の変数宣言はサポートしていない
+        let ident = self.identifier();
+        let declarator = Node::new_variable_declaration(ident, self.initialiser());
+        let declarations = vec![declarator];
+        Node::new_variable_declaration_list(declarations)
     }
 
     fn statement(&mut self) -> Option<Rc<Node>> {
-        let node = Node::new_expression_statement(self.assignment_expression());
+        let node = match self.t.peek()? {
+            Token::Keyword(keyword) => match keyword.as_ref() {
+                "var" => {
+                    // Consume 'var' keyword
+                    assert!(self.t.next().is_some());
+                    self.variable_declaration()
+                }
+                "return" => {
+                    assert!(self.t.next().is_some());
+                    Node::new_return_statement(self.assignment_expression())
+                }
+                _ => None,
+            },
+            _ => Node::new_expression_statement(self.assignment_expression()),
+        };
+
         match self.t.peek() {
             Some(Token::Punctuator(c)) if c == &';' => {
                 assert!(self.t.next().is_some());
@@ -320,6 +379,49 @@ mod tests {
             Node::StringLiteral("string".to_string()),
         ))))];
         let mut expected = Program::new();
+        expected.set_body(body);
+        assert_eq!(expected, parser.parse_ast());
+    }
+
+    #[test]
+    fn test_assign_variable() {
+        let mut parser = create_parser(r#"var foo="bar";"#.to_string());
+        let mut expected = Program::new();
+        let mut body = Vec::new();
+        body.push(Rc::new(Node::VariableDeclarationList {
+            declarations: [Some(Rc::new(Node::VariableDeclaration {
+                id: Some(Rc::new(Node::Identifier("foo".to_string()))),
+                initializer: Some(Rc::new(Node::StringLiteral("bar".to_string()))),
+            }))]
+            .to_vec(),
+        }));
+        expected.set_body(body);
+        assert_eq!(expected, parser.parse_ast());
+    }
+
+    #[test]
+    fn test_add_variable_and_num() {
+        let mut parser = create_parser("var foo=42; var result=foo+1;".to_string());
+        let mut expected = Program::new();
+        let mut body = Vec::new();
+        body.push(Rc::new(Node::VariableDeclarationList {
+            declarations: [Some(Rc::new(Node::VariableDeclaration {
+                id: Some(Rc::new(Node::Identifier("foo".to_string()))),
+                initializer: Some(Rc::new(Node::NumericLiteral(42))),
+            }))]
+            .to_vec(),
+        }));
+        body.push(Rc::new(Node::VariableDeclarationList {
+            declarations: [Some(Rc::new(Node::VariableDeclaration {
+                id: Some(Rc::new(Node::Identifier("result".to_string()))),
+                initializer: Some(Rc::new(Node::AdditiveExpression {
+                    operator: '+',
+                    left: Some(Rc::new(Node::Identifier("foo".to_string()))),
+                    right: Some(Rc::new(Node::NumericLiteral(1))),
+                })),
+            }))]
+            .to_vec(),
+        }));
         expected.set_body(body);
         assert_eq!(expected, parser.parse_ast());
     }
