@@ -36,19 +36,19 @@ impl JsLexer {
         self.pos >= self.input.len()
     }
 
-    fn peek(&self) -> char {
+    fn peek_char(&self) -> char {
         self.input[self.pos]
     }
 
-    fn consume(&mut self) -> char {
+    fn consume_char(&mut self) -> char {
         let c = self.input[self.pos];
         self.pos += 1;
         c
     }
 
     fn skip_whitespaces(&mut self) {
-        while self.peek() == ' ' || self.peek() == '\n' {
-            self.consume();
+        while self.peek_char() == ' ' || self.peek_char() == '\n' {
+            self.consume_char();
 
             if self.exhausted() {
                 return;
@@ -88,8 +88,8 @@ impl JsLexer {
                 return result;
             }
 
-            if self.peek().is_ascii_alphanumeric() || self.peek() == '$' {
-                result.push(self.consume());
+            if self.peek_char().is_ascii_alphanumeric() || self.peek_char() == '$' {
+                result.push(self.consume_char());
             } else {
                 return result;
             }
@@ -99,22 +99,22 @@ impl JsLexer {
     fn consume_string(&mut self) -> String {
         let mut result = String::new();
         assert!(
-            self.peek() == '"' || self.peek() == '\'',
+            self.peek_char() == '"' || self.peek_char() == '\'',
             "current char should be string start quote",
         );
-        self.consume();
+        self.consume_char();
 
         loop {
             if self.exhausted() {
                 return result;
             }
 
-            if self.peek() == '"' || self.peek() == '\'' {
-                self.consume();
+            if self.peek_char() == '"' || self.peek_char() == '\'' {
+                self.consume_char();
                 return result;
             }
 
-            result.push(self.consume());
+            result.push(self.consume_char());
         }
     }
 
@@ -126,10 +126,10 @@ impl JsLexer {
                 return num;
             }
 
-            match self.peek() {
+            match self.peek_char() {
                 c @ '0'..='9' => {
                     num = num * 10 + (c.to_digit(10).unwrap() as u64);
-                    self.consume();
+                    self.consume_char();
                 }
                 _ => return num,
             }
@@ -152,12 +152,12 @@ impl Iterator for JsLexer {
             return Some(Token::Keyword(keyword));
         }
 
-        let c = self.peek();
+        let c = self.peek_char();
 
         let token = match c {
             '+' | '-' | ';' | '=' | '(' | ')' | '{' | '}' | ',' | '.' => {
                 let t = Token::Punctuator(c);
-                self.consume();
+                self.consume_char();
                 t
             }
             '0'..='9' => Token::Number(self.consume_number()),
