@@ -1,16 +1,13 @@
 use core::cell::RefCell;
 
 use alloc::{
-    format,
     rc::{Rc, Weak},
     string::String,
     vec,
     vec::Vec,
 };
 
-use crate::{
-    browser::Browser, display_item::DisplayItem, http::HttpResponse, utils::convert_dom_to_string,
-};
+use crate::{browser::Browser, display_item::DisplayItem, http::HttpResponse};
 
 use super::{
     css::{
@@ -18,11 +15,12 @@ use super::{
         token::CssTokenizer,
     },
     dom::{
-        api::get_style_content,
+        api::{get_js_content, get_style_content},
         node::{ElementKind, NodeKind, Window},
     },
     html::{parser::HtmlParser, token::HtmlTokenizer},
-    layout::{layout_object::LayoutObjectKind, layout_view::LayoutView},
+    js::{ast::JsParser, runtime::JsRuntime, token::JsLexer},
+    layout::layout_view::LayoutView,
 };
 
 #[derive(Debug, Clone)]
@@ -51,8 +49,23 @@ impl Page {
 
     pub fn receive_response(&mut self, response: HttpResponse) {
         self.create_frame(response.body());
+        self.execute_js();
         self.set_layout_view();
         self.paint_tree();
+    }
+
+    fn execute_js(&mut self) {
+        let dom = match &self.frame {
+            Some(frame) => frame.borrow().document(),
+            None => return,
+        };
+
+        let js_code = get_js_content(dom.clone());
+        let lexer = JsLexer::new(js_code);
+        let mut parser = JsParser::new(lexer);
+        let ast = parser.parse_ast();
+        let mut runtime = JsRuntime::new(dom);
+        runtime.execute(&ast);
     }
 
     fn create_frame(&mut self, html: String) {

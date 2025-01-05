@@ -14,7 +14,8 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::renderer::dom::node::Node as DomNode;
+use crate::renderer::dom::node::NodeKind as DomNodeKind;
+use crate::renderer::dom::{api::get_element_by_id, node::Node as DomNode};
 
 use super::ast::{Node, Program};
 
@@ -109,7 +110,9 @@ impl core::fmt::Display for RuntimeValue {
         let s = match self {
             RuntimeValue::Number(n) => format!("{}", n),
             RuntimeValue::StringLiteral(s) => s.to_string(),
-            _ => todo!(),
+            RuntimeValue::HtmlElement { object, .. } => {
+                format!("HtmlElement: {:#?}", object)
+            }
         };
         write!(f, "{}", s)
     }
@@ -129,13 +132,15 @@ impl Function {
 }
 
 pub struct JsRuntime {
+    dom_root: Rc<RefCell<DomNode>>,
     env: Rc<RefCell<Environment>>,
     functions: Vec<Rc<Function>>,
 }
 
 impl JsRuntime {
-    pub fn new() -> Self {
+    pub fn new(dom_root: Rc<RefCell<DomNode>>) -> Self {
         Self {
+            dom_root,
             env: Rc::new(RefCell::new(Environment::new(None))),
             functions: vec![],
         }
@@ -145,6 +150,35 @@ impl JsRuntime {
         let f = self.functions.iter().find(|&f| name == f.id.to_string());
         f.expect(&format!("function {:?} is not defined", name))
             .clone()
+    }
+
+    fn call_browser_api(
+        &mut self,
+        func: &RuntimeValue,
+        arguments: &[Option<Rc<Node>>],
+        env: Rc<RefCell<Environment>>,
+    ) -> (bool, Option<RuntimeValue>) {
+        match func {
+            &RuntimeValue::StringLiteral(ref s) if s == "document.getElementById" => {
+                let arg = match self.eval(&arguments[0], env.clone()) {
+                    Some(a) => a,
+                    None => return (true, None),
+                };
+                let target = match get_element_by_id(Some(self.dom_root.clone()), &arg.to_string())
+                {
+                    Some(a) => a,
+                    None => return (true, None),
+                };
+                (
+                    true,
+                    Some(RuntimeValue::HtmlElement {
+                        object: target,
+                        property: None,
+                    }),
+                )
+            }
+            _ => (false, None),
+        }
     }
 
     pub fn execute(&mut self, program: &Program) {
@@ -183,17 +217,49 @@ impl JsRuntime {
                     return None;
                 }
 
-                let left = left.as_ref()?;
+                let left = left.as_ref()?.clone();
                 if let Node::Identifier(left_id) = left.borrow() {
                     let new_value = self.eval(right, env.clone());
                     env.borrow_mut()
                         .update_variable(left_id.to_string(), new_value);
+                    return None;
+                }
+
+                // domNode.textContent = "hello"のサポート
+                if let Some(RuntimeValue::HtmlElement { object, property }) =
+                    self.eval(&Some(left), env.clone())
+                {
+                    let right = self.eval(right, env.clone())?;
+                    if let Some(prop) = property {
+                        if prop == "textContent" {
+                            object
+                                .borrow_mut()
+                                .set_first_child(Some(Rc::new(RefCell::new(DomNode::new(
+                                    DomNodeKind::Text(right.to_string()),
+                                )))));
+                        }
+                    }
                 }
 
                 None
             }
-            Node::MemberExpression { .. } => {
-                todo!();
+            Node::MemberExpression { object, property } => {
+                let object_value = self.eval(object, env.clone())?;
+                let property_name = match self.eval(property, env.clone()) {
+                    Some(value) => value,
+                    None => return Some(object_value),
+                };
+
+                // オブジェクトがHTML要素の場合にpropertyを更新
+                if let RuntimeValue::HtmlElement { object, property } = object_value {
+                    assert!(property.is_none());
+                    return Some(RuntimeValue::HtmlElement {
+                        object,
+                        property: Some(property_name.to_string()),
+                    });
+                }
+
+                Some(object_value + RuntimeValue::StringLiteral(".".to_string()) + property_name)
             }
             Node::VariableDeclarationList { declarations } => {
                 for declaration in declarations {
@@ -235,10 +301,19 @@ impl JsRuntime {
                 // 新しい関数のスコープを作成
                 let new_env = Rc::new(RefCell::new(Environment::new(Some(env))));
                 let function_name = self.eval(callee, new_env.clone())?;
+                // ブラウザAPIの呼び出し
+                let (called, result) =
+                    self.call_browser_api(&function_name, arguments, new_env.clone());
+                if called {
+                    return result;
+                }
+
+                // JavaScriptランタイムに定義された関数呼び出し
                 let function_name = match function_name {
                     RuntimeValue::StringLiteral(s) => s,
                     _ => panic!("expect a function name, but got {:?}", function_name),
                 };
+
                 let function = self.find_function(&function_name);
 
                 // 関数呼び出しの引数を関数のスコープへ追加
@@ -263,6 +338,7 @@ impl JsRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::renderer::js::ast::JsParser;
     use crate::renderer::js::token::JsLexer;
 
@@ -271,7 +347,8 @@ mod tests {
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new();
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
+        let mut runtime = JsRuntime::new(dom);
         let env = Rc::new(RefCell::new(Environment::new(None)));
 
         ast.body()
