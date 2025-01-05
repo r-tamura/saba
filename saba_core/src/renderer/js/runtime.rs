@@ -244,9 +244,10 @@ impl JsRuntime {
                 // 関数呼び出しの引数を関数のスコープへ追加
                 assert!(arguments.len() == function.params.len());
                 for (arg, param) in zip(arguments, &function.params) {
-                    if let Some(RuntimeValue::StringLiteral(name)) =
-                        self.eval(&param, new_env.clone())
-                    {
+                    let param_name = self.eval(&param, new_env.clone());
+                    // Note: Node::IdentifierをevalしたときにinitializerがないとStringValueとして評価される
+                    // TODO: 同名の変数が外のスコープある引数は正しく評価できない
+                    if let Some(RuntimeValue::StringLiteral(name)) = param_name {
                         new_env
                             .borrow_mut()
                             .add_variable(name, self.eval(arg, new_env.clone()));
@@ -358,4 +359,11 @@ mod tests {
         let expected = [None, None, Some(RuntimeValue::Number(43))];
         assert_eq!(actuals, expected);
     }
+
+    // #[test]
+    // fn test_function_argument_shadowing_outer_variable() {
+    //     let actuals = eval(r#"var a=42; function foo(a) { return a + 1; } foo(1)+a"#);
+    //     let expected = [None, None, Some(RuntimeValue::Number(44))];
+    //     assert_eq!(actuals, expected);
+    // }
 }
