@@ -2,9 +2,11 @@ use core::{
     borrow::Borrow,
     cell::RefCell,
     fmt::Formatter,
+    iter::zip,
     ops::{Add, Sub},
 };
 
+use alloc::vec;
 use alloc::{
     format,
     rc::Rc,
@@ -113,15 +115,36 @@ impl core::fmt::Display for RuntimeValue {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    id: String,
+    params: Vec<Option<Rc<Node>>>,
+    body: Option<Rc<Node>>,
+}
+
+impl Function {
+    fn new(id: String, params: Vec<Option<Rc<Node>>>, body: Option<Rc<Node>>) -> Self {
+        Self { id, params, body }
+    }
+}
+
 pub struct JsRuntime {
     env: Rc<RefCell<Environment>>,
+    functions: Vec<Rc<Function>>,
 }
 
 impl JsRuntime {
     pub fn new() -> Self {
         Self {
             env: Rc::new(RefCell::new(Environment::new(None))),
+            functions: vec![],
         }
+    }
+
+    fn find_function(&mut self, name: &str) -> Rc<Function> {
+        let f = self.functions.iter().find(|&f| name == f.id.to_string());
+        f.expect(&format!("function {:?} is not defined", name))
+            .clone()
     }
 
     pub fn execute(&mut self, program: &Program) {
@@ -143,8 +166,8 @@ impl JsRuntime {
                 left,
                 right,
             } => {
-                let left = self.eval(&left, env.clone())?;
-                let right = self.eval(&right, env.clone())?;
+                let left = self.eval(left, env.clone())?;
+                let right = self.eval(right, env.clone())?;
                 match *operator {
                     '+' => Some(left + right),
                     '-' => Some(left - right),
@@ -178,15 +201,11 @@ impl JsRuntime {
                 }
                 None
             }
-            Node::VariableDeclaration {
-                id,
-                initializer: initial_value,
-            } => {
+            Node::VariableDeclaration { id, initializer } => {
                 if let Some(node) = id {
                     if let Node::Identifier(name) = node.borrow() {
-                        let initial_value = self.eval(&initial_value, env.clone());
-                        env.borrow_mut()
-                            .add_variable(name.to_string(), initial_value);
+                        let initilizer = self.eval(&initializer, env.clone());
+                        env.borrow_mut().add_variable(name.to_string(), initilizer);
                     }
                 }
                 None
@@ -198,8 +217,43 @@ impl JsRuntime {
                 .or(Some(RuntimeValue::StringLiteral(name.to_string()))),
             Node::NumericLiteral(n) => Some(RuntimeValue::Number(*n)),
             Node::StringLiteral(s) => Some(RuntimeValue::StringLiteral(s.to_string())),
-            _ => {
-                unimplemented!("node {:?} is not supported yet", node.as_ref());
+            // Q. 最後の式が'return'でない場合でも返り値になってしまう?
+            Node::BlockStatement { body } => body
+                .iter()
+                .fold(None, |_acc, stmt| self.eval(stmt, env.clone())),
+            Node::ReturnStatement { argument } => self.eval(&argument, env.clone()),
+            Node::FunctionDeclaration { id, params, body } => {
+                let node = self.eval(id, env.clone())?;
+                if let RuntimeValue::StringLiteral(id) = node {
+                    let cloned_body = body.as_ref().map(|b| b.clone());
+                    self.functions
+                        .push(Rc::new(Function::new(id, params.to_vec(), cloned_body)));
+                };
+                None
+            }
+            Node::CallExpression { callee, arguments } => {
+                // 新しい関数のスコープを作成
+                let new_env = Rc::new(RefCell::new(Environment::new(Some(env))));
+                let function_name = self.eval(callee, new_env.clone())?;
+                let function_name = match function_name {
+                    RuntimeValue::StringLiteral(s) => s,
+                    _ => panic!("expect a function name, but got {:?}", function_name),
+                };
+                let function = self.find_function(&function_name);
+
+                // 関数呼び出しの引数を関数のスコープへ追加
+                assert!(arguments.len() == function.params.len());
+                for (arg, param) in zip(arguments, &function.params) {
+                    if let Some(RuntimeValue::StringLiteral(name)) =
+                        self.eval(&param, new_env.clone())
+                    {
+                        new_env
+                            .borrow_mut()
+                            .add_variable(name, self.eval(arg, new_env.clone()));
+                    }
+                }
+
+                self.eval(&function.body.clone(), new_env.clone())
             }
         }
     }
@@ -281,6 +335,27 @@ mod tests {
     fn test_reassign_variable() {
         let actuals = eval(r#"var foo=42; foo=1; foo"#);
         let expected = [None, None, Some(RuntimeValue::Number(1))];
+        assert_eq!(actuals, expected);
+    }
+
+    #[test]
+    fn test_add_function_and_num() {
+        let actuals = eval(r#"function foo() { return 42; } foo()+1"#);
+        let expected = [None, Some(RuntimeValue::Number(43))];
+        assert_eq!(actuals, expected);
+    }
+
+    #[test]
+    fn test_define_function_with_args() {
+        let actuals = eval(r#"function foo(a, b) { return a + b; } foo(1, 2) + 3;"#);
+        let expected = [None, Some(RuntimeValue::Number(6))];
+        assert_eq!(actuals, expected);
+    }
+
+    #[test]
+    fn test_local_variable() {
+        let actuals = eval(r#"var a=42; function foo() { var a=1; return a; } foo()+a"#);
+        let expected = [None, None, Some(RuntimeValue::Number(43))];
         assert_eq!(actuals, expected);
     }
 }
