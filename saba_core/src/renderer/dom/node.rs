@@ -11,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::renderer::{html::attribute::Attribute, layout::layout_object::LayoutSize};
+use crate::renderer::html::attribute::Attribute;
 
 #[derive(Debug, Clone)]
 pub struct Window {
