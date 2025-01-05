@@ -37,22 +37,23 @@ impl JsLexer {
     }
 
     fn peek_char(&self) -> char {
+        assert!(!self.exhausted(), "Cannot peek a char: script is exhausted",);
         self.input[self.pos]
     }
 
     fn consume_char(&mut self) -> char {
+        assert!(
+            !self.exhausted(),
+            "Cannot consume a char: script is exhausted"
+        );
         let c = self.input[self.pos];
         self.pos += 1;
         c
     }
 
     fn skip_whitespaces(&mut self) {
-        while self.peek_char() == ' ' || self.peek_char() == '\n' {
+        while !self.exhausted() && (self.peek_char() == ' ' || self.peek_char() == '\n') {
             self.consume_char();
-
-            if self.exhausted() {
-                return;
-            }
         }
     }
 
@@ -99,7 +100,7 @@ impl JsLexer {
     fn consume_string(&mut self) -> String {
         let mut result = String::new();
         assert!(
-            self.peek_char() == '"' || self.peek_char() == '\'',
+            !self.exhausted() && (self.peek_char() == '"' || self.peek_char() == '\''),
             "current char should be string start quote",
         );
         self.consume_char();
@@ -152,6 +153,9 @@ impl Iterator for JsLexer {
             return Some(Token::Keyword(keyword));
         }
 
+        if self.exhausted() {
+            return None;
+        }
         let c = self.peek_char();
 
         let token = match c {
@@ -300,5 +304,12 @@ mod tests {
             i += 1;
         }
         assert!(lexer.peek().is_none());
+    }
+
+    #[test]
+    fn test_should_tokenize_code_that_ends_with_spaces() {
+        let input = r#"function add(a, b) { return a + b; } "#.to_string();
+        let lexer = JsLexer::new(input).peekable();
+        for _ in lexer {}
     }
 }
