@@ -23,8 +23,8 @@
       return a + b;
     }
 
-    var target = document.getElementById("target");
-    target.textContent = "Answer? 1 + 2 = " + add(1, 2);
+    var target = document.getElementById('target'); target.textContent = 'Answer? 1 + 2= ' + add(1, 2);
+    console.log('Hello from JS!');
   </script>
 </head>
 
@@ -37,7 +37,9 @@
   </p>
   <p class="hidden">none</p>
   <p id="target">original text</p>
-  <button>Button</button>
+  <button onclick="var target = document.getElementById('target'); target.textContent = 'clicked';">
+    Button
+  </button>
 </body>
 
 </html>

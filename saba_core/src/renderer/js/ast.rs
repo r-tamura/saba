@@ -430,6 +430,16 @@ mod tests {
         parser
     }
 
+    fn create_ast(input: Vec<Rc<Node>>) -> Program {
+        let mut program = Program::new();
+        let mut body = vec![];
+        for node in input {
+            body.push(node.clone());
+        }
+        program.set_body(body);
+        program
+    }
+
     #[test]
     fn test_empty() {
         let mut parser = create_parser("".to_string());
@@ -473,6 +483,15 @@ mod tests {
         ))))];
         let mut expected = Program::new();
         expected.set_body(body);
+        assert_eq!(expected, parser.parse_ast());
+    }
+
+    #[test]
+    fn test_single_quoted_string() {
+        let mut parser = create_parser(r#"'string'"#.to_string());
+        let expected = create_ast(vec![Rc::new(Node::ExpressionStatement(Some(Rc::new(
+            Node::StringLiteral("string".to_string()),
+        ))))]);
         assert_eq!(expected, parser.parse_ast());
     }
 
@@ -575,12 +594,8 @@ mod tests {
 
     #[test]
     fn test_define_function_with_args() {
-        let input = "function foo(a, b) { return a+b; }".to_string();
-        let lexer = JsLexer::new(input);
-        let mut parser = JsParser::new(lexer);
-        let mut expected = Program::new();
-        let mut body = Vec::new();
-        body.push(Rc::new(Node::FunctionDeclaration {
+        let mut parser = create_parser("function foo(a, b) { return a+b; }".to_string());
+        let expected = create_ast(vec![Rc::new(Node::FunctionDeclaration {
             id: Some(Rc::new(Node::Identifier("foo".to_string()))),
             params: [
                 Some(Rc::new(Node::Identifier("a".to_string()))),
@@ -597,8 +612,7 @@ mod tests {
                 }))]
                 .to_vec(),
             })),
-        }));
-        expected.set_body(body);
+        })]);
         assert_eq!(expected, parser.parse_ast());
     }
 }

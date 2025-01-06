@@ -225,7 +225,7 @@ impl Iterator for HtmlTokenizer {
                     }
                 }
                 State::TagName => {
-                    if c == ' ' {
+                    if c == ' ' || c == '\n' {
                         self.state = State::BeforeAttributeName;
                         continue;
                     }
@@ -585,6 +585,29 @@ mod tests {
                 tag: "head".to_string(),
                 self_closing: false,
                 attributes: Vec::new(),
+            },
+            HtmlToken::Char('\n'),
+            HtmlToken::EndTag {
+                tag: "head".to_string(),
+            },
+        ];
+        for e in expected {
+            assert_eq!(Some(e), t.next());
+        }
+    }
+
+    #[test]
+    fn test_when_newline_exists_between_start_tag_name_and_attribute() {
+        let html = r#"<head
+class="A">
+</head>"#
+            .to_string();
+        let mut t = HtmlTokenizer::new(html);
+        let expected = [
+            HtmlToken::StartTag {
+                tag: "head".to_string(),
+                self_closing: false,
+                attributes: vec![Attribute::new("class".to_string(), "A".to_string())],
             },
             HtmlToken::Char('\n'),
             HtmlToken::EndTag {

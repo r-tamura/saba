@@ -16,10 +16,14 @@ use super::{
     },
     dom::{
         api::{get_js_content, get_style_content},
-        node::{ElementKind, NodeKind, Window},
+        node::{Element, ElementKind, NodeKind, Window},
     },
     html::{parser::HtmlParser, token::HtmlTokenizer},
-    js::{ast::JsParser, runtime::JsRuntime, token::JsLexer},
+    js::{
+        ast::JsParser,
+        runtime::{JsRuntimeBuilder, PostMessageToHost},
+        token::JsLexer,
+    },
     layout::layout_view::LayoutView,
 };
 
@@ -49,23 +53,37 @@ impl Page {
 
     pub fn receive_response(&mut self, response: HttpResponse) {
         self.create_frame(response.body());
-        self.execute_js();
-        self.set_layout_view();
-        self.paint_tree();
+        self.execute_script();
+        self.render();
     }
 
-    fn execute_js(&mut self) {
+    fn execute_script(&mut self) {
         let dom = match &self.frame {
             Some(frame) => frame.borrow().document(),
             None => return,
         };
 
-        let js_code = get_js_content(dom.clone());
-        let lexer = JsLexer::new(js_code);
+        self.execute_js_code(None, get_js_content(dom));
+    }
+
+    pub fn execute_js_code(&mut self, post_message: Option<PostMessageToHost>, code: String) {
+        let dom = match &self.frame {
+            Some(frame) => frame.borrow().document(),
+            None => panic!("frame is not created yet"),
+        };
+
+        let lexer = JsLexer::new(code);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
-        let mut runtime = JsRuntime::new(dom);
+        let mut runtime = JsRuntimeBuilder::new(dom)
+            .post_message(post_message)
+            .build();
         runtime.execute(&ast);
+    }
+
+    pub fn render(&mut self) {
+        self.set_layout_view();
+        self.paint_tree();
     }
 
     fn create_frame(&mut self, html: String) {
@@ -103,21 +121,30 @@ impl Page {
 
     /// 指定された位置に<a>タグが存在するとき、その<a>タグのリンクを返します
     pub fn get_link_at(&self, position: (i64, i64)) -> Option<String> {
-        let view = self.layout_view.as_ref()?;
-        let node = view.find_node_by_position(position)?;
-        // aタグの子ノードが返されるのでparentでaタグを取得
-        let parent = node.borrow().parent().upgrade()?;
-        let link = if let NodeKind::Element(element) = parent.borrow().node_kind() {
-            match element.kind() {
-                ElementKind::A => element.get_attr("href").map(|attr| attr.value()),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        link
+        let element = self.get_deepest_element_by_position(position)?;
+        match element.kind() {
+            ElementKind::A => element.get_attr("href").map(|attr| attr.value()),
+            _ => None,
+        }
     }
 
+    pub fn get_attribute(&self, position: (i64, i64), attr_name: &str) -> Option<String> {
+        let element = self.get_deepest_element_by_position(position)?;
+        element.get_attr(attr_name).map(|attr| attr.value())
+    }
+
+    pub fn get_deepest_element_by_position(&self, position: (i64, i64)) -> Option<Element> {
+        let node = self.layout_view.as_ref()?.find_node_by_position(position)?;
+        let element = match node.borrow().node_kind() {
+            NodeKind::Element(element) => Some(element),
+            NodeKind::Text(_) => match node.borrow().parent().upgrade()?.borrow().node_kind() {
+                NodeKind::Element(element) => Some(element),
+                _ => None,
+            },
+            _ => None,
+        };
+        element
+    }
     pub fn display_items(&self) -> Vec<DisplayItem> {
         self.display_items.clone()
     }

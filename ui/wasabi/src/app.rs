@@ -40,6 +40,13 @@ pub struct WasabiUI {
     cursor: Cursor,
 }
 
+fn receive_message_from_js_runtime(action: String, arg: String) {
+    match action.as_str() {
+        "console.log" => println!("[LOG]: {}", arg),
+        _ => println!("unknown action: {}", action),
+    }
+}
+
 impl WasabiUI {
     pub fn new(browser: Rc<RefCell<Browser>>) -> Self {
         Self {
@@ -93,6 +100,49 @@ impl WasabiUI {
         }
     }
 
+    fn handle_toolbar_click(&mut self) -> Result<(), Error> {
+        self.clear_address_bar()?;
+        self.start_editing();
+        return Ok(());
+    }
+
+    fn handle_content_area_click(
+        &mut self,
+        handle_navigate: fn(String) -> Result<HttpResponse, Error>,
+        position: (i64, i64),
+    ) -> Result<(), Error> {
+        // aタグがクリックされた場合、リンク先に遷移
+        let destination = self
+            .browser
+            .borrow()
+            .current_page()
+            .borrow_mut()
+            .get_link_at(position);
+        if let Some(url) = destination {
+            self.set_url(url.clone())?;
+            self.open(handle_navigate, url.clone())?;
+        }
+
+        // buttonタグがクリックされた場合、onclick属性のJavaScriptを実行
+        let onclick_code = self
+            .browser
+            .borrow()
+            .current_page()
+            .borrow_mut()
+            .get_attribute(position, "onclick");
+
+        if let Some(onclick_code) = onclick_code {
+            let current_page = self.browser.borrow().current_page();
+            current_page
+                .borrow_mut()
+                .execute_js_code(Some(receive_message_from_js_runtime), onclick_code);
+            current_page.borrow_mut().render();
+            self.update_ui()?;
+        }
+
+        Ok(())
+    }
+
     fn handle_mouse_input(
         &mut self,
         handle_url: fn(String) -> Result<HttpResponse, Error>,
@@ -124,32 +174,23 @@ impl WasabiUI {
             return Ok(());
         }
 
+        // ツールバーの範囲内でクリックされた場合
         fn in_toolbar((_x, y): (i64, i64)) -> bool {
             TITLE_BAR_HEIGHT <= y && y < TOOLBAR_HEIGHT + TITLE_BAR_HEIGHT
         }
         if in_toolbar(relative_pos) {
-            self.clear_address_bar()?;
-            self.start_editing();
+            self.handle_toolbar_click()?;
             println!("button clicked in toolbar: {button:?} {position:?}");
             return Ok(());
+        } else {
+            self.end_editing();
         }
-
-        self.end_editing();
 
         let position_in_content_area = (
             relative_pos.0,
             relative_pos.1 - TITLE_BAR_HEIGHT - TOOLBAR_HEIGHT,
         );
-        let next_destination = self
-            .browser
-            .borrow()
-            .current_page()
-            .borrow_mut()
-            .get_link_at(position_in_content_area);
-        if let Some(url) = next_destination {
-            self.set_url(url.clone())?;
-            self.open(handle_url, url.clone())?;
-        }
+        self.handle_content_area_click(handle_url, position_in_content_area)?;
 
         Ok(())
     }

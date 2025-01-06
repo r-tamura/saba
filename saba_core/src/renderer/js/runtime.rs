@@ -131,18 +131,51 @@ impl Function {
     }
 }
 
+/// JavaScriptのホスト環境へメッセージを送るインタフェース
+pub type PostMessageToHost = fn(action: String, arg: String);
+
+pub struct JsRuntimeBuilder {
+    dom_root: Rc<RefCell<DomNode>>,
+    post_message: Option<PostMessageToHost>,
+}
+
+impl JsRuntimeBuilder {
+    pub fn new(dom_root: Rc<RefCell<DomNode>>) -> Self {
+        Self {
+            post_message: None,
+            dom_root,
+        }
+    }
+
+    pub fn post_message(mut self, f: Option<PostMessageToHost>) -> Self {
+        self.post_message = f;
+        self
+    }
+
+    pub fn dom_root(mut self, dom_root: Rc<RefCell<DomNode>>) -> Self {
+        self.dom_root = dom_root;
+        self
+    }
+
+    pub fn build(&self) -> JsRuntime {
+        JsRuntime::new(self.post_message, self.dom_root.clone())
+    }
+}
+
 pub struct JsRuntime {
     dom_root: Rc<RefCell<DomNode>>,
     env: Rc<RefCell<Environment>>,
     functions: Vec<Rc<Function>>,
+    post_message: Option<PostMessageToHost>,
 }
 
 impl JsRuntime {
-    pub fn new(dom_root: Rc<RefCell<DomNode>>) -> Self {
+    pub fn new(post_message: Option<PostMessageToHost>, dom_root: Rc<RefCell<DomNode>>) -> Self {
         Self {
             dom_root,
             env: Rc::new(RefCell::new(Environment::new(None))),
             functions: vec![],
+            post_message: post_message,
         }
     }
 
@@ -159,24 +192,48 @@ impl JsRuntime {
         env: Rc<RefCell<Environment>>,
     ) -> (bool, Option<RuntimeValue>) {
         match func {
-            &RuntimeValue::StringLiteral(ref s) if s == "document.getElementById" => {
-                let arg = match self.eval(&arguments[0], env.clone()) {
-                    Some(a) => a,
-                    None => return (true, None),
-                };
-                let target = match get_element_by_id(Some(self.dom_root.clone()), &arg.to_string())
-                {
-                    Some(a) => a,
-                    None => return (true, None),
-                };
-                (
-                    true,
-                    Some(RuntimeValue::HtmlElement {
-                        object: target,
-                        property: None,
-                    }),
-                )
-            }
+            &RuntimeValue::StringLiteral(ref s) => match s.as_str() {
+                "document.getElementById" => {
+                    let arg = match self.eval(&arguments[0], env.clone()) {
+                        Some(a) => a,
+                        None => return (true, None),
+                    };
+                    let target =
+                        match get_element_by_id(Some(self.dom_root.clone()), &arg.to_string()) {
+                            Some(a) => a,
+                            None => return (true, None),
+                        };
+                    self.post_message.map(|post_message| {
+                        post_message(
+                            "console.log".to_string(),
+                            format!("found dom node {:?}", &arguments[0]),
+                        );
+                    });
+                    (
+                        true,
+                        Some(RuntimeValue::HtmlElement {
+                            object: target,
+                            property: None,
+                        }),
+                    )
+                }
+                action if action == "console.log" => {
+                    assert!(
+                        arguments.len() > 0,
+                        "console.log() requires at least one argument, got {} arguments",
+                        arguments.len()
+                    );
+                    let arg = match self.eval(&arguments[0], env.clone()) {
+                        Some(a) => a,
+                        None => return (true, None),
+                    };
+                    self.post_message.map(|post_message| {
+                        post_message(action.to_string(), arg.to_string());
+                    });
+                    (true, None)
+                }
+                _ => (false, None),
+            },
             _ => (false, None),
         }
     }
@@ -243,23 +300,33 @@ impl JsRuntime {
 
                 None
             }
+            // https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#prod-MemberExpression
+            // x.y
+            // - - <- property
+            // object
             Node::MemberExpression { object, property } => {
                 let object_value = self.eval(object, env.clone())?;
-                let property_name = match self.eval(property, env.clone()) {
+                let property_value = match self.eval(property, env.clone()) {
                     Some(value) => value,
                     None => return Some(object_value),
                 };
 
                 // オブジェクトがHTML要素の場合にpropertyを更新
+                self.post_message.map(|post_message| {
+                    post_message(
+                        "console.log".to_string(),
+                        format!("found property {:?} of {:?}", property_value, object_value),
+                    );
+                });
                 if let RuntimeValue::HtmlElement { object, property } = object_value {
                     assert!(property.is_none());
                     return Some(RuntimeValue::HtmlElement {
                         object,
-                        property: Some(property_name.to_string()),
+                        property: Some(property_value.to_string()),
                     });
                 }
 
-                Some(object_value + RuntimeValue::StringLiteral(".".to_string()) + property_name)
+                Some(object_value + RuntimeValue::StringLiteral(".".to_string()) + property_value)
             }
             Node::VariableDeclarationList { declarations } => {
                 for declaration in declarations {
@@ -342,13 +409,31 @@ mod tests {
     use crate::renderer::js::ast::JsParser;
     use crate::renderer::js::token::JsLexer;
 
+    static mut CALLED: bool = false;
+    static mut CALL_ARGS: Option<(String, String)> = None;
+
+    fn post_message(action: String, arg: String) {
+        unsafe {
+            CALLED = true;
+            CALL_ARGS = Some((action, arg));
+        }
+    }
+
     fn eval(s: &str) -> Vec<Option<RuntimeValue>> {
+        {
+            unsafe {
+                CALLED = false;
+                CALL_ARGS = None;
+            }
+        }
         let input = s.to_string();
         let lexer = JsLexer::new(input);
         let mut parser = JsParser::new(lexer);
         let ast = parser.parse_ast();
         let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
-        let mut runtime = JsRuntime::new(dom);
+        let mut runtime = JsRuntimeBuilder::new(dom)
+            .post_message(Some(post_message))
+            .build();
         let env = Rc::new(RefCell::new(Environment::new(None)));
 
         ast.body()
@@ -428,6 +513,33 @@ mod tests {
         let actuals = eval(r#"function foo(a, b) { return a + b; } foo(1, 2) + 3;"#);
         let expected = [None, Some(RuntimeValue::Number(6))];
         assert_eq!(actuals, expected);
+    }
+
+    #[test]
+    fn test_runtime_host() {
+        let input = r#"console.log(42);"#.to_string();
+        let lexer = JsLexer::new(input);
+        let mut parser = JsParser::new(lexer);
+        let ast = parser.parse_ast();
+        let dom = Rc::new(RefCell::new(DomNode::new(DomNodeKind::Document)));
+        let mut runtime = JsRuntimeBuilder::new(dom)
+            .post_message(Some(post_message))
+            .build();
+        let env = Rc::new(RefCell::new(Environment::new(None)));
+
+        let _: Vec<_> = ast
+            .body()
+            .iter()
+            .map(|node| runtime.eval(&Some(node.clone()), env.clone()))
+            .collect();
+
+        unsafe {
+            assert!(CALLED);
+            assert_eq!(
+                CALL_ARGS,
+                Some(("console.log".to_string(), "42".to_string()))
+            );
+        }
     }
 
     #[test]

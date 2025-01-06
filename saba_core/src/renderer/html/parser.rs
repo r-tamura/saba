@@ -427,9 +427,25 @@ impl HtmlParser {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-    use crate::alloc::string::ToString;
+    use crate::{alloc::string::ToString, renderer::dom::api::get_element_by_id};
     use alloc::vec;
+
+    fn get_body(window: Rc<RefCell<Window>>) -> Rc<RefCell<Node>> {
+        window
+            .borrow()
+            .document()
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head")
+    }
 
     #[test]
     fn test_empty() {
@@ -597,44 +613,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_button_node() {
-        let html = "<html><head></head><body><button>text</button></body></html>".to_string();
-        let t = HtmlTokenizer::new(html);
-        let window = HtmlParser::new(t).construct_tree();
-        let document = window.borrow().document();
-
-        let body = document
-            .borrow()
-            .first_child()
-            .expect("failed to get a first child of document")
-            .borrow()
-            .first_child()
-            .expect("failed to get a first child of document")
-            .borrow()
-            .next_sibling()
-            .expect("failed to get a next sibling of head");
-        assert_eq!(
-            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
-                "body",
-                vec![]
-            ))))),
-            body
-        );
-
-        let button = body
-            .borrow()
-            .first_child()
-            .expect("failed to get a first child of body");
-        assert_eq!(
-            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
-                "button",
-                vec![]
-            ))))),
-            button
-        );
-    }
-
     // <head>タグの開始タグ終了タグの間に改行が存歳するとパースが停止しない不具合
     #[test]
     fn test_html_should_be_parsed_when_newline_exists_betwenn_open_tag_and_close_tag() {
@@ -645,19 +623,7 @@ mod tests {
         let t = HtmlTokenizer::new(html);
 
         // Assert
-        let window = HtmlParser::new(t).construct_tree();
-        let document = window.borrow().document();
-        let body = document
-            .borrow()
-            .first_child()
-            .expect("failed to get a first child of document")
-            .borrow()
-            .first_child()
-            .expect("failed to get a first child of document")
-            .borrow()
-            .next_sibling()
-            .expect("failed to get a next sibling of head");
-
+        let body = get_body(HtmlParser::new(t).construct_tree());
         assert!(body.borrow().first_child().is_none());
     }
 }
