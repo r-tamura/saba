@@ -129,7 +129,16 @@ impl LayoutObject {
                     }];
                 }
             }
-            LayoutObjectKind::Inline => {}
+            LayoutObjectKind::Inline => {
+                // TOOD: Block要素と同じ扱いになっていている、インライン要素用の座標計算を実装する
+                if let NodeKind::Element(_e) = self.node_kind() {
+                    return vec![DisplayItem::Rect {
+                        style: self.style(),
+                        layout_point: self.point(),
+                        layout_size: self.size(),
+                    }];
+                }
+            }
             LayoutObjectKind::Text => {
                 let text = match self.node_kind() {
                     NodeKind::Text(text) => text,

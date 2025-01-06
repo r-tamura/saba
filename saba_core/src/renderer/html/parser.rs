@@ -1,9 +1,10 @@
 use core::{cell::RefCell, str::FromStr};
 
+use alloc::vec;
 use alloc::{rc::Rc, string::String, vec::Vec};
 
 use crate::renderer::{
-    dom::node::{Element, ElementKind, Node, NodeKind, Window},
+    dom::node::{Element, ElementKind, Node, NodeKind, Window, SUPPORTED_STANDARD_TAGS},
     html::token::HtmlToken,
 };
 
@@ -45,7 +46,7 @@ impl HtmlParser {
             window: Rc::new(RefCell::new(Window::new())),
             mode: InsertionMode::Initial,
             original_insertion_mode: InsertionMode::Initial,
-            stack_of_open_elements: Vec::new(),
+            stack_of_open_elements: vec![],
             t,
         }
     }
@@ -95,34 +96,6 @@ impl HtmlParser {
 
     /// 親ノードの持つ子供の最後尾に新しいノードを追加します
     fn insert_node(&mut self, parent: Rc<RefCell<Node>>, new_node: Node) {
-        // if HtmlParser::has_child(&current) {
-        //     // last_childと等価?
-        //     let mut last_sibling = current.borrow().first_child();
-        //     loop {
-        //         last_sibling = match last_sibling {
-        //             Some(ref node) => {
-        //                 if node.borrow().next_sibling().is_some() {
-        //                     node.borrow().next_sibling()
-        //                 } else {
-        //                     break;
-        //                 }
-        //             }
-        //             None => unimplemented!("last_sibiling shoud be Some"),
-        //         }
-        //     }
-        //     let last_sibling = current.borrow_mut().last_child();
-        //     last_sibling
-        //         .upgrade()
-        //         .unwrap()
-        //         .borrow_mut()
-        //         .set_next_sibling(Some(new_node.clone()));
-        //     new_node.borrow_mut().set_previous_sibling(Rc::downgrade(
-        //         &last_sibling.upgrade().expect("last_sibling should be Some"),
-        //     ))
-        // } else {
-        //     current.borrow_mut().set_first_child(Some(new_node.clone()));
-        // }
-
         let new_node = Rc::new(RefCell::new(new_node));
         let mut current_node = parent.borrow_mut();
         match current_node.last_child().upgrade() {
@@ -166,7 +139,6 @@ impl HtmlParser {
             return;
         }
 
-        // let node = Rc::new(RefCell::new(self.create_char(c)));
         self.insert_node(current, self.create_char(c));
     }
 
@@ -224,7 +196,7 @@ impl HtmlParser {
                         _ => {}
                     }
 
-                    self.insert_element("head", Vec::new());
+                    self.insert_element("head", vec![]);
                     self.mode = InsertionMode::InHead;
                     continue;
                 }
@@ -330,7 +302,7 @@ impl HtmlParser {
                         _ => {}
                     }
                     // bodyタグが存在しない場合に自動挿入
-                    self.insert_element("body", Vec::new());
+                    self.insert_element("body", vec![]);
                     self.mode = InsertionMode::InBody;
                     continue;
                 }
@@ -340,17 +312,7 @@ impl HtmlParser {
                         ref attributes,
                         ..
                     }) => match tag.as_str() {
-                        "p" => {
-                            self.insert_element(tag, attributes.to_vec());
-                            token = self.t.next();
-                            continue;
-                        }
-                        "h1" | "h2" => {
-                            self.insert_element(tag, attributes.to_vec());
-                            token = self.t.next();
-                            continue;
-                        }
-                        "a" => {
+                        s if SUPPORTED_STANDARD_TAGS.contains(&s) => {
                             self.insert_element(tag, attributes.to_vec());
                             token = self.t.next();
                             continue;
@@ -379,21 +341,7 @@ impl HtmlParser {
                             }
                             continue;
                         }
-                        "p" => {
-                            let element_kind = ElementKind::from_str(tag)
-                                .expect("failed to convert string to ElementKind");
-                            token = self.t.next();
-                            self.pop_until(element_kind);
-                            continue;
-                        }
-                        "h1" | "h2" => {
-                            let element_kind = ElementKind::from_str(tag)
-                                .expect("failed to convert string to ElementKind");
-                            token = self.t.next();
-                            self.pop_until(element_kind);
-                            continue;
-                        }
-                        "a" => {
+                        s if SUPPORTED_STANDARD_TAGS.contains(&s) => {
                             let element_kind = ElementKind::from_str(tag)
                                 .expect("failed to convert string to ElementKind");
                             token = self.t.next();
@@ -511,7 +459,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "html",
-                Vec::new()
+                vec![]
             ))))),
             html
         );
@@ -523,7 +471,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "head",
-                Vec::new()
+                vec![]
             ))))),
             head
         );
@@ -535,7 +483,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "body",
-                Vec::new()
+                vec![]
             ))))),
             body
         );
@@ -559,7 +507,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "html",
-                Vec::new()
+                vec![]
             ))))),
             html
         );
@@ -574,7 +522,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "body",
-                Vec::new()
+                vec![]
             ))))),
             body
         );
@@ -609,7 +557,7 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "body",
-                Vec::new()
+                vec![]
             ))))),
             body
         );
@@ -621,18 +569,12 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
                 "p",
-                Vec::new()
+                vec![]
             ))))),
             p
         );
 
-        let mut attr = Attribute::new();
-        attr.add_char('f', true);
-        attr.add_char('o', true);
-        attr.add_char('o', true);
-        attr.add_char('b', false);
-        attr.add_char('a', false);
-        attr.add_char('r', false);
+        let attr = Attribute::try_from("foo=bar").unwrap();
         let a = p
             .borrow()
             .first_child()
@@ -652,6 +594,44 @@ mod tests {
         assert_eq!(
             Rc::new(RefCell::new(Node::new(NodeKind::Text("text".to_string())))),
             text
+        );
+    }
+
+    #[test]
+    fn test_button_node() {
+        let html = "<html><head></head><body><button>text</button></body></html>".to_string();
+        let t = HtmlTokenizer::new(html);
+        let window = HtmlParser::new(t).construct_tree();
+        let document = window.borrow().document();
+
+        let body = document
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of document")
+            .borrow()
+            .next_sibling()
+            .expect("failed to get a next sibling of head");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "body",
+                vec![]
+            ))))),
+            body
+        );
+
+        let button = body
+            .borrow()
+            .first_child()
+            .expect("failed to get a first child of body");
+        assert_eq!(
+            Rc::new(RefCell::new(Node::new(NodeKind::Element(Element::new(
+                "button",
+                vec![]
+            ))))),
+            button
         );
     }
 

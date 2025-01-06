@@ -349,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hidden_class() {
+    fn test_display_none_class() {
         let html = r#"<html>
     <head>
     <style>

@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Display};
 
 use alloc::{
     format,
@@ -57,7 +57,10 @@ impl ComputedStyle {
 
         // 値が設定されていないプロパティについてプロパティごとのデフォルト値を設定する
         if self.background_color.is_none() {
-            self.background_color = Some(Color::white());
+            self.background_color = match node.borrow().element_kind() {
+                Some(ElementKind::Button) => Some(ColorName::LightGray.into()),
+                _ => Some(Color::white()),
+            }
         }
         if self.color.is_none() {
             self.color = Some(Color::black());
@@ -135,10 +138,88 @@ impl ComputedStyle {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorName {
+    Black,
+    Silver,
+    Gray,
+    White,
+    Maroon,
+    Red,
+    Purple,
+    Fuchsia,
+    Green,
+    Lime,
+    Olive,
+    Yellow,
+    Navy,
+    Blue,
+    Teal,
+    Aqua,
+    Orange,
+    LightGray,
+}
+
+impl Display for ColorName {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = match self {
+            ColorName::Black => "black",
+            ColorName::Silver => "silver",
+            ColorName::Gray => "gray",
+            ColorName::White => "white",
+            ColorName::Maroon => "maroon",
+            ColorName::Red => "red",
+            ColorName::Purple => "purple",
+            ColorName::Fuchsia => "fuchsia",
+            ColorName::Green => "green",
+            ColorName::Lime => "lime",
+            ColorName::Olive => "olive",
+            ColorName::Yellow => "yellow",
+            ColorName::Navy => "navy",
+            ColorName::Blue => "blue",
+            ColorName::Teal => "teal",
+            ColorName::Aqua => "aqua",
+            ColorName::Orange => "orange",
+            ColorName::LightGray => "lightgray",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Color {
     name: Option<String>,
     code: String,
+}
+
+impl From<ColorName> for Color {
+    fn from(name: ColorName) -> Color {
+        let code = match name {
+            ColorName::Black => "#000000".to_string(),
+            ColorName::Silver => "#c0c0c0".to_string(),
+            ColorName::Gray => "#808080".to_string(),
+            ColorName::White => "#ffffff".to_string(),
+            ColorName::Maroon => "#800000".to_string(),
+            ColorName::Red => "#ff0000".to_string(),
+            ColorName::Purple => "#800080".to_string(),
+            ColorName::Fuchsia => "#ff00ff".to_string(),
+            ColorName::Green => "#008000".to_string(),
+            ColorName::Lime => "#00ff00".to_string(),
+            ColorName::Olive => "#808000".to_string(),
+            ColorName::Yellow => "#ffff00".to_string(),
+            ColorName::Navy => "#000080".to_string(),
+            ColorName::Blue => "#0000ff".to_string(),
+            ColorName::Teal => "#008080".to_string(),
+            ColorName::Aqua => "#00ffff".to_string(),
+            ColorName::Orange => "#ffa500".to_string(),
+            ColorName::LightGray => "#d3d3d3".to_string(),
+        };
+
+        Self {
+            name: Some(name.to_string()),
+            code,
+        }
+    }
 }
 
 impl Color {
@@ -290,7 +371,7 @@ impl TryFrom<&str> for DisplayType {
         match s {
             "block" => Ok(Self::Block),
             "inline" => Ok(Self::Inline),
-            "node" => Ok(Self::None),
+            "none" => Ok(Self::None),
             _ => Err(Error::UnexpectedInput(format!(
                 "display {:?} is not supported yet",
                 s

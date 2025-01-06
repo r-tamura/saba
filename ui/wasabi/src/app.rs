@@ -74,6 +74,10 @@ impl WasabiUI {
     ) -> Result<(), Error> {
         self.setup()?;
 
+        const INITIAL_URL: &str = "http://host.test:8000/example/test.html";
+        self.set_url(INITIAL_URL.to_string())?;
+        self.open(handle_url, INITIAL_URL.to_string())?;
+
         self.run_app(handle_url)?;
 
         Ok(())
@@ -143,9 +147,8 @@ impl WasabiUI {
             .borrow_mut()
             .get_link_at(position_in_content_area);
         if let Some(url) = next_destination {
-            self.input_url = url.clone();
-            self.update_address_bar()?;
-            self.start_navigation(handle_url, url)?;
+            self.set_url(url.clone())?;
+            self.open(handle_url, url.clone())?;
         }
 
         Ok(())
@@ -166,7 +169,7 @@ impl WasabiUI {
                     match code {
                         0x0A => {
                             // ENTER
-                            self.start_navigation(handle_url, self.input_url.clone())?;
+                            self.open(handle_url, self.input_url.clone())?;
                             self.input_url = String::new();
                             self.input_mode = InputMode::Normal;
                         }
@@ -187,7 +190,7 @@ impl WasabiUI {
         Ok(())
     }
 
-    fn start_navigation(
+    fn open(
         &mut self,
         handle_url: fn(String) -> Result<HttpResponse, Error>,
         destination: String,
@@ -309,6 +312,11 @@ impl WasabiUI {
             )
             .expect("failed to create a rect for the address bar"),
         );
+    }
+
+    fn set_url(&mut self, url: String) -> Result<(), Error> {
+        self.input_url = url;
+        self.update_address_bar()
     }
 
     fn update_address_bar(&mut self) -> Result<(), Error> {

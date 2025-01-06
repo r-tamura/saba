@@ -125,7 +125,7 @@ impl HtmlTokenizer {
             match token {
                 HtmlToken::StartTag {
                     ref mut attributes, ..
-                } => attributes.push(Attribute::new()),
+                } => attributes.push(Attribute::default()),
                 _ => panic!("`latest_token` should be either StartTag"),
             }
         }
@@ -261,6 +261,7 @@ impl Iterator for HtmlTokenizer {
                     self.state = State::AttributeName;
                     self.start_new_attribute();
                 }
+                // https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state
                 State::AttributeName => {
                     if c == ' ' || c == '/' || c == '>' || self.is_eof() {
                         self.reconsume = true;
@@ -273,12 +274,7 @@ impl Iterator for HtmlTokenizer {
                         continue;
                     }
 
-                    if c.is_ascii_uppercase() {
-                        self.append_attribute(c, true);
-                        continue;
-                    }
-
-                    self.append_attribute(c, true);
+                    self.append_attribute(c.to_ascii_lowercase(), true);
                 }
                 State::AfterAttributeName => {
                     if c == ' ' {
@@ -518,27 +514,9 @@ mod tests {
     fn test_attributes() {
         let html = "<p class=\"A\" id='B' foo=bar></p>".to_string();
         let mut tokenizer = HtmlTokenizer::new(html);
-        let mut attr1 = Attribute::new();
-        attr1.add_char('c', true);
-        attr1.add_char('l', true);
-        attr1.add_char('a', true);
-        attr1.add_char('s', true);
-        attr1.add_char('s', true);
-        attr1.add_char('A', false);
-
-        let mut attr2 = Attribute::new();
-        attr2.add_char('i', true);
-        attr2.add_char('d', true);
-        attr2.add_char('B', false);
-
-        let mut attr3 = Attribute::new();
-        attr3.add_char('f', true);
-        attr3.add_char('o', true);
-        attr3.add_char('o', true);
-        attr3.add_char('b', false);
-        attr3.add_char('a', false);
-        attr3.add_char('r', false);
-
+        let attr1 = Attribute::new("class".to_string(), "A".to_string());
+        let attr2 = Attribute::new("id".to_string(), "B".to_string());
+        let attr3 = Attribute::new("foo".to_string(), "bar".to_string());
         let expected = [
             HtmlToken::StartTag {
                 tag: "p".to_string(),

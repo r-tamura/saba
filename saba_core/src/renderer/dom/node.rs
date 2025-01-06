@@ -190,10 +190,13 @@ impl Element {
     }
 
     pub fn is_block(&self) -> bool {
-        match self.kind {
-            ElementKind::Body | ElementKind::H1 | ElementKind::H2 | ElementKind::P => true,
-            _ => false,
-        }
+        const BLOCK_ELEMENT_KINDS: [ElementKind; 4] = [
+            ElementKind::Body,
+            ElementKind::H1,
+            ElementKind::H2,
+            ElementKind::P,
+        ];
+        BLOCK_ELEMENT_KINDS.contains(&self.kind())
     }
 }
 
@@ -217,12 +220,17 @@ pub enum ElementKind {
     H2,
     /// https://html.spec.whatwg.org/multipage/text-level-semantics.html#the-a-element
     A,
+    /// https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element
+    Button,
 }
 
-impl FromStr for ElementKind {
-    type Err = String;
+/// 特別な処理が必要のないタグ
+pub const SUPPORTED_STANDARD_TAGS: [&str; 5] = ["p", "a", "h1", "h2", "button"];
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl TryFrom<&str> for ElementKind {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             "html" => Ok(ElementKind::Html),
             "head" => Ok(ElementKind::Head),
@@ -233,8 +241,17 @@ impl FromStr for ElementKind {
             "h1" => Ok(ElementKind::H1),
             "h2" => Ok(ElementKind::H2),
             "a" => Ok(ElementKind::A),
+            "button" => Ok(ElementKind::Button),
             _ => Err(format!("unimplemented element name {:?}", s)),
         }
+    }
+}
+
+impl FromStr for ElementKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        TryFrom::try_from(s)
     }
 }
 
@@ -250,6 +267,7 @@ impl Display for ElementKind {
             ElementKind::H1 => "h1",
             ElementKind::H2 => "h2",
             ElementKind::A => "a",
+            ElementKind::Button => "button",
         };
         write!(f, "{}", s)
     }
